@@ -88,6 +88,19 @@ const Home = () => {
                 <p className="card-text">
                   {fragrance.description?.substring(0, 100)}...
                 </p>
+                <Link 
+                  to={`/fragrance/${fragrance.id}`} 
+                  className="btn btn-primary w-100"
+                  style={{
+                    backgroundColor: '#FFD700',
+                    borderColor: '#FFD700',
+                    color: '#000',
+                    fontWeight: '500',
+                    marginTop: '1rem'
+                  }}
+                >
+                  View Details
+                </Link>
               </div>
             </div>
           ))}

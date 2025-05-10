@@ -165,6 +165,17 @@ export const getQuizResults = async () => {
   }
 };
 
+// Get personalized recommendations (with pagination)
+export const getRecommendations = async (page = 1, perPage = 6) => {
+  try {
+    const response = await api.get(`/api/recommendations/personalized?page=${page}&per_page=${perPage}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching recommendations:", error);
+    return { recommendations: [], count: 0, page: 1 };
+  }
+};
+
 // Favorites requests
 export const addToFavorites = async (fragrance_id) => {
   try {
@@ -178,9 +189,14 @@ export const addToFavorites = async (fragrance_id) => {
 export const getFavorites = async () => {
   try {
     const response = await api.get('/api/favourites');
+    // Debug logging to identify the issue
+    console.log("Favorites API response:", response.data);
+    // Return the raw data so we can access the correct structure in the component
     return response.data;
   } catch (error) {
-    handleError(error);
+    console.error("Error in getFavorites:", error);
+    // Return a default structure to prevent UI errors
+    return { favourites: [], count: 0 };
   }
 };
 
@@ -205,9 +221,10 @@ export const checkFavorite = async (fragrance_id) => {
 // Similar fragrances request
 export const getSimilarFragrances = async (fragranceName) => {
   try {
-    const response = await api.get(`/api/recommendations?title=${encodeURIComponent(fragranceName)}`);
-    return response.data;
+    const response = await api.get(`/api/recommendations/similar?name=${encodeURIComponent(fragranceName)}`);
+    return response.data.recommendations || [];
   } catch (error) {
+    console.error("Error fetching similar fragrances:", error);
     return [];
   }
 };

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -12,14 +12,81 @@ import {
   Stack,
   Rating,
   Alert,
-  Divider
+  Divider,
+  Pagination,
+  CircularProgress
 } from '@mui/material';
 import { Star, StarBorder } from '@mui/icons-material';
+import { getRecommendations } from '../api/requests';
 
 const Recommendations = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { quizAnswers, recommendations, error } = location.state || {};
+  const { quizAnswers, recommendations: initialRecommendations, error: initialError } = location.state || {};
+  
+  const [recommendations, setRecommendations] = useState(initialRecommendations || []);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(initialError || '');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [displayedRecs, setDisplayedRecs] = useState([]);
+  
+  // Number of recommendations to display per page
+  const itemsPerPage = 6;
+  
+  useEffect(() => {
+    // If we have recommendations from quiz, paginate them client-side
+    if (initialRecommendations?.length > 0) {
+      const totalPgs = Math.ceil(initialRecommendations.length / itemsPerPage);
+      setTotalPages(totalPgs || 1);
+      
+      // Initial display
+      updateDisplayedRecommendations(initialRecommendations, 1);
+    } else {
+      // Otherwise fetch recommendations from API
+      fetchRecommendations();
+    }
+  }, []);
+  
+  const updateDisplayedRecommendations = (allRecs, currentPage) => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    setDisplayedRecs(allRecs.slice(startIndex, endIndex));
+  };
+  
+  const handlePageChange = async (event, newPage) => {
+    setPage(newPage);
+    
+    if (initialRecommendations?.length > 0) {
+      // Client-side pagination if we have all recommendations
+      updateDisplayedRecommendations(initialRecommendations, newPage);
+    } else {
+      // Server-side pagination
+      await fetchRecommendations(newPage);
+    }
+    
+    // Scroll to top of recommendations
+    window.scrollTo({
+      top: document.getElementById('recommendations-top').offsetTop - 20,
+      behavior: 'smooth'
+    });
+  };
+  
+  const fetchRecommendations = async (pageNum = 1) => {
+    setLoading(true);
+    try {
+      const response = await getRecommendations(pageNum, itemsPerPage);
+      setRecommendations(response.recommendations || []);
+      setDisplayedRecs(response.recommendations || []);
+      setTotalPages(Math.ceil(response.count / itemsPerPage) || 1);
+      setError('');
+    } catch (err) {
+      console.error("Error fetching recommendations:", err);
+      setError('Failed to load recommendations. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const formatAccords = (accords) => {
     if (!accords) return [];
@@ -58,12 +125,12 @@ const Recommendations = () => {
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Typography variant="h4" gutterBottom align="center" sx={{ color: '#FFD700' }}>
-        Your Personalized Fragrance Recommendations
+      <Typography variant="h4" gutterBottom sx={{ color: '#FFD700', textAlign: 'center', mb: 4 }}>
+        Your Personalised Fragrance Recommendations
       </Typography>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
+        <Alert severity="error" sx={{ mb: 4 }}>
           {error}
         </Alert>
       )}
@@ -119,14 +186,20 @@ const Recommendations = () => {
           </Grid>
         </Box>
       )}
-
-      {recommendations?.length > 0 ? (
+      
+      <div id="recommendations-top"></div>
+      
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 5 }}>
+          <CircularProgress sx={{ color: '#FFD700' }} />
+        </Box>
+      ) : displayedRecs?.length > 0 ? (
         <>
           <Typography variant="h5" gutterBottom sx={{ color: '#FFD700', mt: 2 }}>
             Recommended For You
           </Typography>
           <Grid container spacing={3}>
-            {recommendations.map((fragrance, index) => (
+            {displayedRecs.map((fragrance, index) => (
               <Grid item xs={12} sm={6} md={4} key={index}>
                 <Card
                   sx={{
@@ -205,6 +278,28 @@ const Recommendations = () => {
               </Grid>
             ))}
           </Grid>
+          
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+              <Pagination 
+                count={totalPages} 
+                page={page} 
+                onChange={handlePageChange} 
+                variant="outlined" 
+                shape="rounded"
+                sx={{
+                  '& .MuiPaginationItem-root': {
+                    color: '#FFD700',
+                    borderColor: '#444',
+                  },
+                  '& .Mui-selected': {
+                    backgroundColor: 'rgba(255, 215, 0, 0.2) !important',
+                  }
+                }}
+              />
+            </Box>
+          )}
         </>
       ) : (
         <Box

@@ -104,7 +104,7 @@ function App() {
             } 
           />
           <Route 
-            path="/favorites" 
+            path="/favourites" 
             element={
               <ProtectedRoute>
                 <Favorites user={user} />
