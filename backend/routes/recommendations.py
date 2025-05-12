@@ -98,6 +98,10 @@ def hybrid_recommendations(user_id, title=None, top_n=5, page=1, per_page=5):
     """Generate recommendations with pagination"""
     global _df, _cosine_sim
     
+    # Ensure valid pagination parameters
+    page = max(1, page)  # Minimum page is 1
+    per_page = max(1, min(20, per_page))  # Between 1 and 20
+    
     # Calculate pagination offsets
     start_idx = (page - 1) * per_page
     end_idx = start_idx + per_page
@@ -122,7 +126,17 @@ def hybrid_recommendations(user_id, title=None, top_n=5, page=1, per_page=5):
         try:
             prefs = json.loads(quiz_result.preferences)
             
-            # Apply lightweight filtering - avoid expensive operations
+            # Map vibe to accords for beginners
+            if prefs.get('experience_level') == 'Beginner' and prefs.get('vibe'):
+                vibe_map = {
+                    'Fresh and clean': ['Fresh', 'Citrus', 'Aquatic', 'Green'],
+                    'Warm and cosy': ['Vanilla', 'Amber', 'Gourmand', 'Woody'],
+                    'Bold and attention-grabbing': ['Spicy', 'Woody', 'Leather', 'Oriental'],
+                    'Light and subtle': ['Floral', 'Citrus', 'Powdery', 'Fresh']
+                }
+                prefs['desired_accords'] = vibe_map.get(prefs['vibe'], [])
+            
+            # Apply lightweight filtering
             candidates = []
             
             if 'gender' in prefs:
@@ -141,21 +155,49 @@ def hybrid_recommendations(user_id, title=None, top_n=5, page=1, per_page=5):
                     else:
                         candidates = list(rating_matches.index)
                 
-                # Accord matching (more expensive, so limit to top candidates)
-                if 'desired_accords' in prefs and candidates:
-                    # Limit to top 100 candidates for accord matching
-                    limited_candidates = candidates[:100] if len(candidates) > 100 else candidates
-                    for idx in limited_candidates:
-                        if idx < len(_df):
-                            accords = _df.loc[idx, 'Main Accords']
-                            score = 0
+                # Accord matching
+                if 'desired_accords' in prefs:
+                    desired_accords = prefs['desired_accords']
+                    if not candidates:
+                        # If no candidates yet, check all fragrances
+                        for idx in range(len(_df)):
+                            accords = _df.iloc[idx]['Main Accords']
                             if isinstance(accords, str) and accords:
+                                # Convert string representation to list
+                                if accords.startswith('['):
+                                    try:
+                                        accord_list = json.loads(accords)
+                                    except:
+                                        accord_list = accords.strip('[]').replace("'", "").split(',')
+                                else:
+                                    accord_list = [a.strip() for a in accords.split(',')]
+                                
                                 # Count matches between desired accords and fragrance accords
-                                score = sum(1 for accord in prefs['desired_accords'] if accord in accords)
-                            all_recs.append((_df.iloc[idx], score * 0.1 + 0.5))  # Weight by matches
+                                score = sum(1 for accord in desired_accords if any(a.strip().lower() == accord.lower() for a in accord_list))
+                                if score > 0:  # Only add if there's at least one match
+                                    all_recs.append((_df.iloc[idx], score * 0.2 + 0.5))  # Weight by matches
+                    else:
+                        # Check only existing candidates
+                        for idx in candidates:
+                            if idx < len(_df):
+                                accords = _df.iloc[idx]['Main Accords']
+                                if isinstance(accords, str) and accords:
+                                    # Convert string representation to list
+                                    if accords.startswith('['):
+                                        try:
+                                            accord_list = json.loads(accords)
+                                        except:
+                                            accord_list = accords.strip('[]').replace("'", "").split(',')
+                                    else:
+                                        accord_list = [a.strip() for a in accords.split(',')]
+                                    
+                                    # Count matches between desired accords and fragrance accords
+                                    score = sum(1 for accord in desired_accords if any(a.strip().lower() == accord.lower() for a in accord_list))
+                                    if score > 0:  # Only add if there's at least one match
+                                        all_recs.append((_df.iloc[idx], score * 0.2 + 0.5))  # Weight by matches
             
-            # If we don't have candidates but have a quiz result, add some default recommendations
-            if not candidates and not all_recs:
+            # If we don't have recommendations but have a quiz result, add some default recommendations
+            if not all_recs:
                 top_rated = _df.sort_values('Rating Value', ascending=False).head(5)
                 for _, row in top_rated.iterrows():
                     all_recs.append((row, 0.5))  # Medium weight
@@ -197,11 +239,7 @@ def hybrid_recommendations(user_id, title=None, top_n=5, page=1, per_page=5):
     # Extract just the fragrances (without scores)
     result = [rec[0] for rec in paginated_recs]
     
-    # Convert to DataFrame if needed
-    if result:
-        return pd.DataFrame(result)
-    else:
-        return pd.DataFrame()
+    return pd.DataFrame(result)
 
 @recommendations_bp.route('/quiz', methods=['POST', 'OPTIONS'])  
 def get_recommendations():
